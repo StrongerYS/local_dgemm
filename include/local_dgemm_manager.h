@@ -15,10 +15,11 @@ struct LocalBlockInfo{
 };
 enum class TaskStatus {
     Idle = 0,
-    Trans = 1,
-    Calculate0 = 2,
-    Calculate1 = 3,
-    Finished = 4
+    Ready = 1,
+    DataReady = 2,
+    Calculate0 = 3,
+    Calculate1 = 4,
+    Finished = 5
 };
 struct LocalDgemmTaskInfo {
     int m, n, k;                    ///< m = rows of A, n = cols of B, k = cols of A / rows of B
@@ -56,6 +57,7 @@ public:
 
     // void *getTaskBufferInput(const unsigned int &taskId, const int &bankId, const bool &isA);
     void alignBufferInput(const unsigned int &taskId);
+    bool markTaskDataReady(const unsigned int &taskId);
     bool getTaskStatus(const unsigned int &taskId, TaskStatus &status);
     bool stepAllTask();
     bool endTask(const unsigned int &taskId);

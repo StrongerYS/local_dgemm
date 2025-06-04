@@ -87,7 +87,7 @@ void LocalDgemmManager::confTaskInfo(const int &m, const int &n, const int &k, c
     }
     taskInfo[taskId].acc = acc;
 
-    taskInfo[taskId].status = TaskStatus::Trans;
+    taskInfo[taskId].status = TaskStatus::Ready;
 }
 void LocalDgemmManager::calculate(const unsigned int &m, const unsigned int &n, const unsigned int &k, const bool &acc, const void *inputA, const void *inputB, void *outputC) {
     // Implement the calculation logic here using inputA, inputB, and outputC
@@ -269,7 +269,13 @@ void LocalDgemmManager::alignBufferInput(const unsigned int &taskId) {
         }
     }
 }
-
+bool LocalDgemmManager::markTaskDataReady(const unsigned int &taskId) {
+    if (taskId < NumTasks && taskInfo[taskId].status == TaskStatus::Ready) {
+        taskInfo[taskId].status = TaskStatus::DataReady;
+        return true;
+    }
+    return false;
+}
 bool LocalDgemmManager::getTaskStatus(const unsigned int &taskId, TaskStatus &status) {
     if (taskId < NumTasks) {
         status = this->taskInfo[taskId].status;
@@ -283,9 +289,9 @@ bool LocalDgemmManager::stepAllTask() {
     unsigned int cal1TaskId = NumTasks;
 
     for (unsigned int i = 0; i < NumTasks; ++i) {
-        if (taskInfo[i].status == TaskStatus::Idle){
+        if (taskInfo[i].status == TaskStatus::Idle || taskInfo[i].status == TaskStatus::Ready) {
             continue; // Skip idle tasks
-        } else if (taskInfo[i].status == TaskStatus::Trans) {
+        } else if (taskInfo[i].status == TaskStatus::DataReady) {
             if(NumTasks == cal0TaskId){
                 taskInfo[i].status = TaskStatus::Calculate0;
                 cal0TaskId = i;
