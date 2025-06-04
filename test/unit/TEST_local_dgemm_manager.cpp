@@ -337,3 +337,88 @@ TEST_F(LocalDgemmManagerTest, AccOnce){
     EXPECT_TRUE(manager->getTaskStatus(taskId1, status1));
     EXPECT_EQ(status1, TaskStatus::Idle);
 }
+TEST_F(LocalDgemmManagerTest, AccMultiple){
+    unsigned int m0 = 121, n0 = 121, k0 = 268;
+    unsigned int m1 = m0, n1 = n0, k1 = 64;
+    unsigned int cal0TaskId = 0, cal1TaskId = 0, finishedTaskId = 0;
+    for (unsigned int kIdx = 0; kIdx < k0; kIdx += k1)
+    {
+        unsigned int taskId;
+        unsigned int kTail = (kIdx + k1 > k0) ? (k0 - kIdx) : k1;
+        bool acc = (kIdx > 0);
+        EXPECT_TRUE(manager->registerTask(m1, n1, kTail, acc, taskId));
+        LocalDgemmTaskInfo taskInfo;
+        EXPECT_TRUE(manager->getTaskInfo(taskId, taskInfo));
+
+        MatrixDmaParam dmaParamAUp = manager->getTaskMatrixDmaParamInputA(taskId, 0);
+        MatrixDmaParam dmaParamADown = manager->getTaskMatrixDmaParamInputA(taskId, 1);
+        MatrixDmaParam dmaParamBLeft = manager->getTaskMatrixDmaParamInputB(taskId, 0);
+        MatrixDmaParam dmaParamBRight = manager->getTaskMatrixDmaParamInputB(taskId, 1);
+        std::fill(static_cast<double*>(dmaParamAUp.addr),
+                  static_cast<double*>(dmaParamAUp.addr) + taskInfo.m0Pad * taskInfo.kPad,
+                  1.0);
+        std::fill(static_cast<double*>(dmaParamADown.addr),
+                  static_cast<double*>(dmaParamADown.addr) + taskInfo.m1Pad * taskInfo.kPad,
+                  1.0);
+        std::fill(static_cast<double*>(dmaParamBLeft.addr),
+                  static_cast<double*>(dmaParamBLeft.addr) + taskInfo.kPad * taskInfo.n0Pad,
+                  2.0);
+        std::fill(static_cast<double*>(dmaParamBRight.addr),
+                  static_cast<double*>(dmaParamBRight.addr) + taskInfo.kPad * taskInfo.n1Pad,
+                  2.0);
+        manager->alignBufferInput(taskId);
+
+        EXPECT_TRUE(manager->stepAllTask());
+        finishedTaskId = cal1TaskId;
+        cal1TaskId = cal0TaskId;
+        cal0TaskId = taskId;
+
+        TaskStatus status;
+        manager->getTaskStatus(finishedTaskId, status);
+        if(status == TaskStatus::Finished){
+            manager->endTask(finishedTaskId);
+        }
+    }
+    unsigned int taskId = cal0TaskId;
+    while(true){
+        TaskStatus status;
+        manager->getTaskStatus(taskId, status);
+        if(status == TaskStatus::Finished){
+            break;
+        }
+        EXPECT_TRUE(manager->stepAllTask());
+    }
+    // Check the output buffers
+    MatrixDmaParam dmaParamC00 = manager->getTaskMatrixDmaParamOutputC(taskId, 0);
+    MatrixDmaParam dmaParamC01 = manager->getTaskMatrixDmaParamOutputC(taskId, 1);
+    MatrixDmaParam dmaParamC10 = manager->getTaskMatrixDmaParamOutputC(taskId, 2);
+    MatrixDmaParam dmaParamC11 = manager->getTaskMatrixDmaParamOutputC(taskId, 3);
+    double *outputC00 = static_cast<double*>(dmaParamC00.addr);
+    double *outputC01 = static_cast<double*>(dmaParamC01.addr);
+    double *outputC10 = static_cast<double*>(dmaParamC10.addr);
+    double *outputC11 = static_cast<double*>(dmaParamC11.addr);
+    LocalDgemmTaskInfo taskInfo;
+    EXPECT_TRUE(manager->getTaskInfo(taskId, taskInfo));
+    for (int i = 0; i < taskInfo.m0; ++i) {
+        for (int j = 0; j < taskInfo.n0; ++j) {
+            EXPECT_DOUBLE_EQ(outputC00[i * taskInfo.n0Pad + j], 536.0); // m0 * n0
+        }
+    }
+    for (int i = 0; i < taskInfo.m0; ++i) {
+        for (int j = 0; j < taskInfo.n1; ++j) {
+            EXPECT_DOUBLE_EQ(outputC01[i * taskInfo.n1Pad + j], 536.0); // m0 * n1
+        }
+    }
+    for (int i = 0; i < taskInfo.m1; ++i) {
+        for (int j = 0; j < taskInfo.n0; ++j) {
+            EXPECT_DOUBLE_EQ(outputC10[i * taskInfo.n0Pad + j], 536.0); // m1 * n0
+        }
+    }
+    for (int i = 0; i < taskInfo.m1; ++i) {
+        for (int j = 0; j < taskInfo.n1; ++j) {
+            EXPECT_DOUBLE_EQ(outputC11[i * taskInfo.n1Pad + j], 536.0); // m1 * n1
+        }
+    }
+    // End the task
+    EXPECT_TRUE(manager->endTask(taskId));
+}
